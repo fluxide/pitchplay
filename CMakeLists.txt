@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
 
-project(listeningtest VERSION 1.0.0
+project(pitchplay VERSION 1.0.0
 	DESCRIPTION "listen to sound files, rpgmaker style"
 	LANGUAGES CXX)
 
