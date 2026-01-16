@@ -8,12 +8,10 @@ BImage::BImage(const int w, const int h, int bt)
 	he = h;
 	ty = bt;
 	base = new uint8_t[wi * he * 4];
-	im5 = new uint8_t[wi * he * 4];
 }
 
 BImage::~BImage()
 {
-	delete[] im5;
 	delete[] base;
 }
 
@@ -122,10 +120,59 @@ void BImage::redraw(double param, int iii)
 	}
 	break;
 
+	case(3):
+	{
+		std::vector<double> cols1 = hsvrgb(fmod(o1 * 360 + 0 * 180, 360), 0.3, 0.8);
+		std::vector<double> cols2 = hsvrgb(fmod(o1 * 360 + 1 * 180, 360), 0.3, 0.8);
+		fPoint p1(cx + dx * cos(da2 + o), cy + dy * sin(da2 + o));
+		fPoint p2(cx + dx * cos(2 * da2 + o), cy + dy * sin(2 * da2 + o));
+		fPoint p3(cx + dx * cos(3 * da2 + o), cy + dy * sin(3 * da2 + o));
+		fPoint p4(cx + dx * cos(4 * da2 + o), cy + dy * sin(4 * da2 + o));
+		fPoint p5(cx + 0.5 * dx * cos(1 * da2 + o), cy + 0.5 * dy * sin(1 * da2 + o));
+		fPoint p6(cx + 0.5 * dx * cos(2 * da2 + o), cy + 0.5 * dy * sin(2 * da2 + o));
+		fPoint p7(cx + 0.5 * dx * cos(3 * da2 + o), cy + 0.5 * dy * sin(3 * da2 + o));
+		fPoint p8(cx + 0.5 * dx * cos(4 * da2 + o), cy + 0.5 * dy * sin(4 * da2 + o));
+
+		for (int y = 0;y < he;y++) {
+			for (int x = 0; x < wi;x++) {
+
+				int pi = wi * y + x;
+
+				fPoint p(x, y);
+
+				int in = static_cast<int>(PointInTriangle(p, p1, p5, p6) ||
+					PointInTriangle(p, p1, p2, p6) ||
+					PointInTriangle(p, p2, p6, p7) ||
+					PointInTriangle(p, p2, p3, p7) ||
+					PointInTriangle(p, p3, p7, p8) ||
+					PointInTriangle(p, p3, p4, p8) ||
+					PointInTriangle(p, p4, p8, p5) ||
+					PointInTriangle(p, p4, p1, p5));
+
+				if (in) {
+
+					base[4 * pi] = static_cast<uint8_t>(fmod(cols1[0] * 256, 256));
+					base[4 * pi + 1] = static_cast<uint8_t>(fmod(cols1[1] * 256, 256));
+					base[4 * pi + 2] = static_cast<uint8_t>(fmod(cols1[2] * 256, 256));
+					base[4 * pi + 3] = static_cast<uint8_t>(qr);
+				}
+				else {
+					base[4 * pi] = static_cast<uint8_t>(fmod(cols2[0] * 256, 256));
+					base[4 * pi + 1] = static_cast<uint8_t>(fmod(cols2[1] * 256, 256));
+					base[4 * pi + 2] = static_cast<uint8_t>(fmod(cols2[2] * 256, 256));
+					base[4 * pi + 3] = static_cast<uint8_t>(qr);
+				}
+			}
+		}
+	}
+	break;
+
 	case(-1):
 	{
 		std::mt19937 gen;
 		constexpr double gm = static_cast<double>(gen.max());
+		double p2 = param+0.1;
+		int sg = p2!=0 ? p2/abs(p2) : 1;
 
 		for (int y = 0;y < he;y++) {
 			for (int x = 0; x < wi;x++) {
@@ -137,11 +184,11 @@ void BImage::redraw(double param, int iii)
 				double col = in + 2.4;
 
 				gen.seed(iii);
-				std::vector<double> cols = hsvrgb(360*(gen() / gm), 0.3+(sin(col+o)+1)/4*(gen() / gm), 0.8 + (sin(col + o)+1)/2*0.1*(gen() / gm) );
+				std::vector<double> cols = hsvrgb(360*(gen() / gm), 0.3+(sin(col+o)+1)/4*(gen() / gm), 0.5+ 0.3 * sg + (sin(col + o)+1)/2*0.1*(gen() / gm) );
 
-				base[4 * pi] = static_cast<uint8_t>(cols[0]*256);
-				base[4 * pi + 1] = static_cast<uint8_t>(cols[1]*256);
-				base[4 * pi + 2] = static_cast<uint8_t>(cols[2]*256);
+				base[4 * pi] = static_cast<uint8_t>(fmod(cols[0]*256,256));
+				base[4 * pi + 1] = static_cast<uint8_t>(fmod(cols[1]*256,256));
+				base[4 * pi + 2] = static_cast<uint8_t>(fmod(cols[2]*256,256));
 				base[4 * pi + 3] = static_cast<uint8_t>(qr);
 			}
 		}
@@ -196,62 +243,35 @@ std::vector<uint8_t> BImage::rgbhsv(double r, double g, double b)
 	return {static_cast<uint8_t>(h * 256), static_cast<uint8_t>(s * 256), v};
 }
 
-std::vector<double> BImage::hsvrgb(double h, double s, double v)
+std::vector<double> BImage::hsvrgb(double H, double S, double V)
 {
-	double hh, p, q, t, ff;
-	long i;
-	std::vector<double> out = {0,0,0};
+	double r, g, b;
 
-	if (s <= 0.0) {
-		out[0] = v;
-		out[1] = v;
-		out[2] = v;
-		return out;
+	float h = H / 360;
+	float s = S / 1;
+	float v = V / 1;
+
+	int i = floor(h * 6);
+	float f = h * 6 - i;
+	float p = v * (1 - s);
+	float q = v * (1 - f * s);
+	float t = v * (1 - (1 - f) * s);
+
+	switch (i % 6) {
+	case 0: r = v, g = t, b = p; break;
+	case 1: r = q, g = v, b = p; break;
+	case 2: r = p, g = v, b = t; break;
+	case 3: r = p, g = q, b = v; break;
+	case 4: r = t, g = p, b = v; break;
+	case 5: r = v, g = p, b = q; break;
 	}
-	hh = h;
-	if (hh >= 360.0) hh = 0.0;
-	hh /= 60.0;
-	i = (long)hh;
-	ff = hh - i;
-	p = v * (1.0 - s);
-	q = v * (1.0 - (s * ff));
-	t = v * (1.0 - (s * (1.0 - ff)));
 
-	switch (i) {
-	case 0:
-		out[0] = v;
-		out[1] = t;
-		out[2] = p;
-		break;
-	case 1:
-		out[0] = q;
-		out[1] = v;
-		out[2] = p;
-		break;
-	case 2:
-		out[0] = p;
-		out[1] = v;
-		out[2] = t;
-		break;
+	std::vector<double> color = {0,0,0};
+	color[0] = r;
+	color[1] = g;
+	color[2] = b;
 
-	case 3:
-		out[0] = p;
-		out[1] = q;
-		out[2] = v;
-		break;
-	case 4:
-		out[0] = t;
-		out[1] = p;
-		out[2] = v;
-		break;
-	case 5:
-	default:
-		out[0] = v;
-		out[1] = p;
-		out[2] = q;
-		break;
-	}
-	return out;
+	return color;
 }
 
 bool BImage::PointInTriangle(fPoint pt, fPoint v1, fPoint v2, fPoint v3)

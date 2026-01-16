@@ -38,7 +38,7 @@ class Button : public QWidget {
 
 public:
 
-	enum BType { Start = 0, Stop = 1, FileD = 2, Count = 3 };
+	enum BType { Start = 0, Stop = 1, FileD = 2, CopyC = 3, Count = 4 };
 	Q_ENUM(BType)
 
 		Button(QWidget* p, BType ty);
@@ -125,6 +125,7 @@ public:
 	void dlay();
 	void gimg();
 	QVector<Filew*>& gfiles();
+	int sel = -1;
 
 public slots:
 
@@ -165,12 +166,19 @@ class LKnob : public QWidget {
 
 public:
 
-	LKnob(QWidget* p);
+	LKnob(QWidget* p, const char* kww);
 	~LKnob();
 	LKnob(const LKnob& l)=default;
 	double val = 0;
 	double valt = 0;
 	QLabel* lab=nullptr;
+	QLineEdit* labt=nullptr;
+	QString kw = "";
+	double ext=0;
+
+public slots:
+
+	void check();
 
 protected:
 
@@ -203,6 +211,7 @@ public:
 	LKnob* pitk = nullptr;
 	LKnob* fik = nullptr;
 	LKnob* vk = nullptr;
+	LKnob* pk = nullptr;
 	APlay* pl;
 
 

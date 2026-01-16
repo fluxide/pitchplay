@@ -4,13 +4,14 @@
 #include <fstream>
 #include <chrono>
 #include <random>
+#include <windows.h>
 
 Inter::Inter(QWidget* p) : QWidget(p)
 {
-	resize(200, 150);
+	resize(400, 300);
 	setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 	setMouseTracking(true);
-	setMinimumSize(size());
+	setMinimumSize(QSize(250,300));
 	setMaximumSize(QSize(800,600));
 
 	mt = QThread::currentThread();
@@ -23,21 +24,30 @@ Inter::Inter(QWidget* p) : QWidget(p)
 	fscr = new Fscr(this);
 	fdret();
 
-	vk = new LKnob(this);
-	pitk = new LKnob(this);
-	fik = new LKnob(this);
+	vk = new LKnob(this, "Volume");
+	pitk = new LKnob(this, "Pitch");
+	fik = new LKnob(this, "Fade In");
+	pk = new LKnob(this, "Panning");
 	
 	vk->lab = new QLabel("Volume", this);
 	pitk->lab = new QLabel("Pitch", this);
 	fik->lab = new QLabel("Fade In", this);
+	pk->lab = new QLabel("Panning", this);
 	
 	vk->lab->setFont(QFont("helvetica", 6, 500));
 	pitk->lab->setFont(QFont("helvetica", 6, 500));
 	fik->lab->setFont(QFont("helvetica", 6, 500));
+	pk->lab->setFont(QFont("helvetica", 6, 500));
 
-	vk->val = 1;
-	pitk->val = 0.5;
+	vk->ext = 100;
+	pitk->ext = 200;
+	fik->ext = 100;
+	pk->ext = 100;
+
+	vk->val = 100;
+	pitk->val = 100;
 	fik->val = 0;
+	pk->val = 50;
 
 	pl = new APlay(this);
 }
@@ -53,6 +63,7 @@ Inter::~Inter()
 	delete vk;
 	delete pitk;
 	delete fik;
+	delete pk;
 	delete pl;
 }
 
@@ -69,6 +80,7 @@ void Inter::resizeEvent(QResizeEvent* e)
 	double fac2 = 0.3;
 
 	double fac3 = 0.75;
+	double fac4 = 0.37;
 	double cw2 = ssss * fac3 / e->size().width()*1.1;
 
 	for (int i = 0; i < l; i++) {
@@ -80,9 +92,17 @@ void Inter::resizeEvent(QResizeEvent* e)
 	vk->setGeometry(Ut::setRGeometry(1-cw2, 0.15, fac3, 0.2, e->size(), QSize(ssss, ss)));
 	pitk->setGeometry(Ut::setRGeometry(1-cw2, 0.25, fac3, 0.2, e->size(), QSize(ssss, ss)));
 	fik->setGeometry(Ut::setRGeometry(1-cw2, 0.35, fac3, 0.2, e->size(), QSize(ssss, ss)));
-	vk->lab->setGeometry(Ut::setRGeometry(1-cw2, 0.1, fac3, 0.2, e->size(), QSize(ssss, ss)));
-	pitk->lab->setGeometry(Ut::setRGeometry(1-cw2, 0.2, fac3, 0.2, e->size(), QSize(ssss, ss)));
-	fik->lab->setGeometry(Ut::setRGeometry(1-cw2, 0.3, fac3, 0.2, e->size(), QSize(ssss, ss)));
+	pk->setGeometry(Ut::setRGeometry(1-cw2, 0.45, fac3, 0.2, e->size(), QSize(ssss, ss)));
+	
+	vk->lab->setGeometry(Ut::setRGeometry(1-cw2, 0.1, fac4, 0.2, e->size(), QSize(ssss, ss)));
+	pitk->lab->setGeometry(Ut::setRGeometry(1-cw2, 0.2, fac4, 0.2, e->size(), QSize(ssss, ss)));
+	fik->lab->setGeometry(Ut::setRGeometry(1-cw2, 0.3, fac4, 0.2, e->size(), QSize(ssss, ss)));
+	pk->lab->setGeometry(Ut::setRGeometry(1-cw2, 0.4, fac4, 0.2, e->size(), QSize(ssss, ss)));
+	
+	vk->labt->setGeometry(Ut::setRGeometry(1.1-cw2, 0.1, fac4, 0.25, e->size(), QSize(ssss, ss)));
+	pitk->labt->setGeometry(Ut::setRGeometry(1.1-cw2, 0.2, fac4, 0.25, e->size(), QSize(ssss, ss)));
+	fik->labt->setGeometry(Ut::setRGeometry(1.1-cw2, 0.3, fac4, 0.25, e->size(), QSize(ssss, ss)));
+	pk->labt->setGeometry(Ut::setRGeometry(1.1-cw2, 0.4, fac4, 0.25, e->size(), QSize(ssss, ss)));
 }
 
 void Inter::moveEvent(QMoveEvent* e)
@@ -114,6 +134,7 @@ void Inter::fdret() {
 	std::filesystem::directory_iterator cdirit(cd);
 
 	fscr->gfiles().clear();
+	fscr->sel = -1;
 
 	std::string ex[3] = {".wav",".ogg",".mp3"};
 
@@ -134,7 +155,7 @@ Button::Button(QWidget* p, BType ty) : QWidget(p)
 	type = ty;
 	setMouseTracking(true);
 	
-	im = new BImage(100, 100, type);
+	im = new BImage(40, 40, type);
 
 	mt = static_cast<Inter*>(parent())->mt;
 
@@ -188,13 +209,17 @@ void LKnob::winit()
 
 void Fscr::imdr(int si, int ei) {
 	
-	double ll = 0.2 * log(std::min(width(), height())) / log(1.04);;
+	double ll = 0.2 * log(std::min(width(), height())) / log(1.04);
 	int l = ll * viewport()->children().size();
 
 	wt = std::thread([this](int sin ,int ein, int ll) {
 
 		for (int i = sin; i < ein; i++) {
-			ims[i]->redraw(255*tone/ll, i);
+			if(i!=sel) 
+				ims[i]->redraw(abs(255*tone/ll), i);
+			else    
+				ims[i]->redraw(-128*abs(tone/ll), -1-i);
+		
 		}
 	}, si, ei, l);
 
@@ -270,7 +295,7 @@ void Button::mouseReleaseEvent(QMouseEvent* e)
 
 	if (e != nullptr) {
 
-		auto pare = static_cast<Inter*>(parent());
+		auto* pare = static_cast<Inter*>(parent());
 
 		switch (this->getType()) {
 
@@ -285,6 +310,7 @@ void Button::mouseReleaseEvent(QMouseEvent* e)
 			break;
 
 		case(BType::FileD):
+		{
 			qDebug() << "filed";
 
 			auto* fd = new QFileDialog(this, "Choose Directory", pare->cdr.c_str(), "Sound (*.ogg, *.wav, *.mp3)");
@@ -292,7 +318,89 @@ void Button::mouseReleaseEvent(QMouseEvent* e)
 			fd->setAcceptMode(QFileDialog::AcceptOpen);
 			QObject::connect(fd, &QFileDialog::finished, pare, &Inter::fdret);
 			fd->open();
+		}
+			break;
+		
+		case(BType::CopyC):
+		{
+			qDebug() << "copy";
 
+			{
+				OpenClipboard(nullptr);
+
+				HANDLE h = GetClipboardData(566);
+				if (!h) {
+					printf("No data for format %u\n", 566);
+					CloseClipboard();
+					goto A;
+				}
+
+				void* ptr = GlobalLock(h);
+				SIZE_T size = GlobalSize(h);
+
+				printf("Size: %zu bytes\n", size);
+
+				unsigned char* bytes = (unsigned char*)ptr;
+				for (SIZE_T i = 0; i < size; i++) {
+					printf("%02X ", bytes[i]);
+					if ((i + 1) % 16 == 0) printf("\n");
+				}
+				printf("\n");
+
+				GlobalUnlock(h);
+				CloseClipboard();
+			}
+			A:
+			std::vector<uint8_t> buf;
+
+			auto u8 = [&](uint8_t v) { buf.push_back(v); };
+			auto u16 = [&](uint16_t v) { buf.push_back(v & 0xFF); buf.push_back(v >> 8); };
+			auto u32 = [&](uint32_t v) {
+				buf.push_back(v & 0xFF);
+				buf.push_back((v >> 8) & 0xFF);
+				buf.push_back((v >> 16) & 0xFF);
+				buf.push_back((v >> 24) & 0xFF);
+			};
+
+			auto command = [&](QByteArray fname, bool ct, int vol, int pit, int pan, int fin) {
+
+				if (ct) u16(0x76D9);
+				else u16(0x1EDA);
+				u8(0);
+				u8(fname.size());
+				buf.insert(buf.end(), fname.begin(), fname.end());
+				u8(ct? 6:5);
+				if(ct) u8(0);
+				u8(vol);
+				if (pit > 129) { u8(129); u8(pit - 128); }
+				else u8(pit);
+				u8(pan);
+				u8(0);
+				u8(0);
+			};
+
+			QString fstr2 = QString::fromStdString(static_cast<Inter*>(parent())->crf.filename().string());
+			QString fstr = QFileInfo(fstr2).completeBaseName();
+
+			if (fstr.toStdString() == "") break;
+
+			buf.clear();
+			command(fstr.toLocal8Bit(), e->button() == Qt::MouseButton::LeftButton, pare->vk->val, pare->pitk->val, pare->pk->val, pare->fik->val);
+
+			uint32_t len = buf.size();
+			uint8_t* lenv = (uint8_t*)&len;
+			buf.insert(buf.begin(), lenv, lenv+4);
+
+			//for(int i = 0; i<buf.size();i++) qDebug() << (uint8_t)buf.data()[i];
+			UINT fmt = 566;
+			OpenClipboard(0);
+			EmptyClipboard();
+			HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len+4);
+			memcpy(GlobalLock(hMem), buf.data(), len+4);
+			GlobalUnlock(hMem);
+			SetClipboardData(fmt, hMem);
+			CloseClipboard();
+		}
 			break;
 		}
 	}
@@ -529,7 +637,6 @@ void Fscr::paintEvent(QPaintEvent* e)
 
 	QPainter painter(this->viewport());
 	painter.setBackgroundMode(Qt::TransparentMode);
-	painter.setPen(QColor(0,0,0));
 	painter.setFont(QFont("Helvetica",8,500));
 	QTextOption to;
 	to.setAlignment(Qt::AlignCenter);
@@ -553,6 +660,10 @@ void Fscr::paintEvent(QPaintEvent* e)
 		if (ci != co) {
 			
 			imdr(ci, ci+1);
+			if(ci != sel)
+				painter.setPen(QColor(0, 0, 0));
+			else painter.setPen(QColor(255, 255, 255));
+
 			QImage bs(ims[ci]->getimp(), 40, 10, QImage::Format_RGBA8888);
 			painter.drawImage(QPointF(0,i2), bs.scaled(QSize(e->rect().width(), ll*0.9)));
 			painter.drawText(QRect(0, i2 , e->rect().width(), ll), files[ci]->pat.filename().generic_string().c_str(), to);
@@ -578,6 +689,9 @@ void Fscr::mousePressEvent(QMouseEvent* e)
 		qDebug() << files[cy]->pat;
 		static_cast<Inter*>(parent())->crf = files[cy]->pat;
 		static_cast<Inter*>(parent())->pl->stop();
+		sel = cy;
+		imdr(cy, cy + 1);
+		viewport()->update();
 	}
 	
 	if (e->button() == Qt::MouseButton::MiddleButton) {
@@ -610,23 +724,30 @@ void Fscr::mouseReleaseEvent(QMouseEvent* e)
 	}
 }
 
-LKnob::LKnob(QWidget* p) : QWidget(p)
+LKnob::LKnob(QWidget* p, const char* kww) : QWidget(p)
 {
 	setMouseTracking(true);
+	kw = kww;
+	labt = new QLineEdit(parentWidget());
+	labt->setFont(QFont("helvetica", 6, 500));
+	QObject::connect(labt, &QLineEdit::editingFinished, this, &LKnob::check);
 }
 
 LKnob::~LKnob()
 {
 	lab->deleteLater();
+	labt->deleteLater();
 }
 
 void LKnob::mousePressEvent(QMouseEvent* e)
 {
 	if (e->button() == Qt::MouseButton::LeftButton) {
 
-		val = static_cast<double>(e->pos().x()) / width();
+		val = static_cast<double>(e->pos().x()) / width() * ext;
 		
-		val = std::clamp(val, 0.0, 1.0);
+		double min = kw == "Pitch" ? 10.0 : 0.0;
+
+		val = std::clamp(floor(val /10) * (10), min, ext);
 
 		if (!mbs) {
 			mbs = true;
@@ -638,8 +759,11 @@ void LKnob::mousePressEvent(QMouseEvent* e)
 void LKnob::mouseMoveEvent(QMouseEvent* e)
 {
 	if (mbs) {
-		val = static_cast<double>(e->pos().x()) / width();
-		val = std::clamp(val, 0.0, 1.0);
+
+		double min = kw == "Pitch" ? 10.0 : 0.0;
+
+		val = static_cast<double>(e->pos().x()) / width() *ext;
+		val = std::clamp(floor(val/10)*(10), min, ext);
 		winit();
 	}
 }
@@ -654,7 +778,7 @@ void LKnob::mouseReleaseEvent(QMouseEvent* e)
 void LKnob::paintEvent(QPaintEvent* e)
 {
 	mbst = false;
-	valt += (val - valt) * 0.4;
+	valt += (val - valt) * 0.5;
 	QPainter painter(this);
 	painter.setBackgroundMode(Qt::TransparentMode);
 	std::vector<uint8_t> d = { 0,0,0,255 };
@@ -663,12 +787,16 @@ void LKnob::paintEvent(QPaintEvent* e)
 	for (int i = 0; i < e->rect().width(); i++) {
 		
 		int ma = 3;
-		double c = std::clamp(2*log(100 *((static_cast<double>(i) / e->rect().width() + valt * 0.9))) / log(valt*0.09 + 1.01), 0.0, 255.0);
+		double c = std::clamp(2*log(1000 *((static_cast<double>(i) / e->rect().width() + valt/ext * 0.09))) / log(1.2), 64.0, 192.0);
 
-		if (abs(static_cast<double>(i) / e->rect().width() - valt) < 0.05)
+		if (abs(static_cast<double>(i) / e->rect().width() - valt/ext) < 0.05)
 		{
 			ma = 0;
-			c = 255 - c;
+			c = 192 - c;
+		}
+
+		if (fmod((ext/10) * static_cast<double>(i) / e->rect().width(), 1) < 0.15) {
+			c = 192 - c;
 		}
 
 		painter.setPen(QColor(c,c,c));
@@ -676,8 +804,24 @@ void LKnob::paintEvent(QPaintEvent* e)
 
 	}
 
+	labt->setText(std::to_string(val).c_str());
 	painter.end();
 
 	if (abs(val - valt) > 0.01)
 		winit();
+}
+
+void LKnob::check() {
+
+	auto* p = static_cast<QLineEdit*>(QObject::sender());
+	std::string et = p->text().toStdString();
+	
+	if (!et.empty() && std::find_if(et.begin(), et.end(), [](unsigned char c) { return !(std::isdigit(c)|| c == '.'); }) == et.end() && std::stod(et) <= ext && std::stod(et) >= 0) {
+		val = std::stod(et);
+		p->setText(et.c_str());
+	}
+	else {
+		p->setText(std::to_string(val).c_str());
+	}
+	update();
 }

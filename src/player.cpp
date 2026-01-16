@@ -5,6 +5,7 @@
 #include "vorbis/codec.h"
 #include "vorbis/vorbisfile.h"
 #include "miniaudio.h"
+#include "sndfile.h"
 #ifdef _WIN32
 #include <io.h>
 #include <fcntl.h>
@@ -15,7 +16,7 @@
 APlay::APlay(QWidget* p)
 {
 	ma_device_config config = ma_device_config_init(ma_device_type_playback);
-	config.playback.format = ma_format_s16;
+	config.playback.format = ma_format_f32;
 	config.playback.channels = 2;
 	config.sampleRate = 44100;
 	config.dataCallback = playcb;
@@ -29,8 +30,9 @@ APlay::APlay(QWidget* p)
 APlay::~APlay()
 {
 	ov_clear(&ogg);
-	ma_device_uninit(&device);
-	delete[] ppin;
+	ma_device_uninit(&device);		
+	delete[] ppinr;
+	delete[] ppinl;
 	delete[] ppout;
 }
 
@@ -45,48 +47,86 @@ void APlay::play(std::filesystem::path f)
 	_setmode(_fileno(fi), _O_BINARY);
 #endif
 
-	if (f.extension() == ".ogg") {
-		if (!ma_device_is_started(&device)) {
+	if (!ma_device_is_started(&device)) {
+
+
+
+		if (f.extension() == ".ogg") {
+		
 			std::memset(&ogg, 0, sizeof(ogg));
 			ov_open_callbacks(fi, &ogg, NULL, 0, OV_CALLBACKS_NOCLOSE);
-			
+
 			vi = ov_info(&ogg, -1);
-			int chn = 2;
-			int r = 44100;
 
 			if (vi != nullptr) {
 				chn = vi->channels;
-				r = vi->rate;
+			}
+			else {
+				chn = 1;
 			}
 
 			int bs = 0;
-			char di[4096*4];
+			char di[4096 * 8];
 
 			while (1) {
 
-				r = ov_read(&ogg, di, 4096*4, 0, 2, 1, &bs);
-				
+				long r = ov_read(&ogg, di, 4096 * 8, 0, 2, 1, &bs);
+
 				if (r <= 0) break;
-				data.insert(data.end(),di,di+r);
+				data.insert(data.end(), di, di + r);
 				tot += r;
 			}
-
-			ppin = data.data();
-			ppout = new char[11 * tot];
-			for (unsigned int i = 0;i < 11* tot;i++) ppout[i] = 0;
-
-			ma_device_start(&device);
+			ts = 2;
 		}
-	}
 
-	if (f.extension() == ".mp3") {
+		if (f.extension() == ".mp3") {
 		
+			return;
+		}
 
-	}
-
-	if (f.extension() == ".wav") {
+		if (f.extension() == ".wav") {
 		
+			SF_INFO inf{};
+			SNDFILE* wf = sf_open(f.generic_string().c_str(), SFM_READ, &inf);
+			int di[4096];
+			chn = inf.channels;
 
+			while (1) {
+
+				long r = sf_read_int(wf, di, 4096);
+
+				if (r <= 0) break;
+				data.insert(data.end(), (char*)di, (char*)di + 4*r);
+				tot += 4*r;
+			}
+
+			ts = 4;
+		}
+
+
+		unsigned int ii = 0;
+		ppinr = new char[tot/2];
+		ppinl = new char[tot/2];
+
+		for (unsigned int i = 0; i < tot;i += ts*chn) {
+
+			for (int iii = 0; iii < ts; iii++) {
+				ppinl[ii + iii] = data.data()[i+iii];
+
+			}
+			
+			for (int iii = 0; iii < ts; iii++) {
+				ppinr[ii + iii] = data.data()[i+iii+ts*(chn-1)];
+
+			}
+
+			ii += ts;
+		}
+
+		ppout = new char[11 * tot * ts];
+		for (unsigned int i = 0;i < 11 * tot * ts;i++) ppout[i] = 0;
+
+		ma_device_start(&device);
 	}
 }
 
@@ -97,7 +137,8 @@ void APlay::stop()
 		read = 0;
 		tot = 0;
 		data.clear();
-		std::memset(ppin,0,tot);
+		delete[] ppinl;
+		delete[] ppinr;
 		delete[] ppout;
 	}
 }
@@ -105,27 +146,57 @@ void APlay::stop()
 void playcb(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
 {
 	APlay* p = static_cast<APlay*>(pDevice->pUserData);
-	double pitch = std::clamp(floor(static_cast<Inter*>(p->parent)->pitk->val*200)/100,0.1,2.0);
-	double volume = static_cast<Inter*>(p->parent)->vk->val;
-	double fade_in = static_cast<Inter*>(p->parent)->fik->val;
+	double pitch = std::clamp(static_cast<Inter*>(p->parent)->pitk->val/100,0.1,2.0);
+	double volume = static_cast<Inter*>(p->parent)->vk->val/100;
+	double fade_in = static_cast<Inter*>(p->parent)->fik->val/10;
+	double panning = static_cast<Inter*>(p->parent)->pk->val/100;
 	char* out = static_cast<char*>(pOutput);
 
-	int16_t* samp = (int16_t*)p->ppin;
-	int16_t* sampout = (int16_t*)p->ppout;
-	int ii = 0;
+	assert(p->ts != 0);
 
-	for (float i = 0; i < 2*frameCount*pitch; i+=pitch) {
+	char* sampr = (char*)p->ppinr;
+	char* sampl = (char*)p->ppinl;
+	float* sampout = (float*)p->ppout;
+	double ii = 0;
 
-		double ci = i + p->read;
-		int ri = floor(ci);
-		int ri2 = floor(ci+pitch);
-		sampout[ii] = static_cast<int16_t>(volume*((ci-ri)*(samp[ri+1]-samp[ri])+samp[ri]));
-		ii++;
+	auto fr = [](char* buf, double p, int tot, int ts) {
+
+		int h = 4;
+		int fp = floor(p);
+		double f = p - fp;
+
+		double sum = 0.0;
+		double norm = 0.0;
+
+		for (int i = 1 - h;i < h;i++) {
+
+			int idx = fp + i;
+			idx = (idx + tot) % tot;
+
+			double x = i - f;
+			double w = (1+cos(2*M_PI*x/h))/2;
+			double s = x==0.0 ? w : sin(x*M_PI)/x*M_PI * w;
+
+			if (ts == 2) 
+				sum += ((int16_t*)buf)[idx] * s;
+			else if (ts == 4)
+				sum += ((int*)buf)[idx] * s;
+			norm += s;
+		}
+
+		return norm != 0.0 ? sum / norm : 0.0;
+	};
+
+	for (unsigned int i = 0; i < 2*frameCount; i+=2) {
+
+		double ci = ii + p->read;
+		sampout[i] = static_cast<float>(((1 - panning) * volume * fr(sampl, ci, p->tot/p->ts/2, p->ts))/pow(2,8*p->ts-1));
+		sampout[i+1] = static_cast<float>((panning*volume* fr(sampr, ci, p->tot/ p->ts / 2, p->ts)) / pow(2, 8 * p->ts-1));
+		ii+= pitch;
 	}
 
-	ii *= pitch;
 	p->read += ii;
-	p->read = fmod(p->read,p->tot/2-2*frameCount*pitch);
+	p->read = fmod(p->read,p->tot/(p->ts * 2)-2*frameCount-4);
 
-	std::memcpy(out, p->ppout, 4 * static_cast<size_t>(frameCount));
+	std::memcpy(out, p->ppout, 8 * static_cast<size_t>(frameCount));
 }
