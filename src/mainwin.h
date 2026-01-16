@@ -155,6 +155,8 @@ public:
 	~Inter();
 	Inter(const Inter& i) = default;
 
+	void hintm(const char* m); // sets hint message
+
 	QThread* mt; //main thread
 	std::string cdr = "."; //current dir
 	std::filesystem::path crf = ""; //current file (to play)
@@ -163,6 +165,7 @@ public:
 	LKnob* vk = nullptr; //volume knob
 	LKnob* pk = nullptr; //pan knob
 	APlay* pl; //audio player
+	QLabel* hp = nullptr; //hint panel
 
 
 public slots:

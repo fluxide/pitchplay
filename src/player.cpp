@@ -6,6 +6,7 @@
 #include "vorbis/vorbisfile.h"
 #include "miniaudio.h"
 #include "sndfile.h"
+#include "mpg123.h"
 #ifdef _WIN32
 #include <io.h>
 #include <fcntl.h>
@@ -24,7 +25,6 @@ APlay::APlay(QWidget* p)
 	config.pUserData = this;
 
 	ma_device_init(NULL, &config, &device);
-
 	parent = p;
 }
 
@@ -83,9 +83,27 @@ void APlay::play(std::filesystem::path f)
 			ts = 2; //data is int16_t type
 		}
 
-		if (f.extension() == ".mp3") { //read mp3 with mpg123, to be implemented
+		if (f.extension() == ".mp3") { //read mp3 with mpg123
 		
-			return;
+			mpg123_handle* mp = mpg123_new(nullptr,nullptr);
+			mpg123_open(mp,f.generic_string().c_str());
+
+			long rate;
+			int enc;
+			mpg123_getformat(mp,&rate,&chn,&enc);
+			mpg123_format(mp, rate, chn, MPG123_ENC_SIGNED_16);
+
+			int16_t di[4096 * 4];
+
+			while (1) {
+				size_t r;
+				int cc = mpg123_read(mp, di, 4096 * 4, &r);
+
+			    if (cc == MPG123_DONE) break;
+				data.insert(data.end(), (char*)di, (char*)di + r);
+				tot += r;
+			}
+			ts = 2;
 		}
 
 		if (f.extension() == ".wav") { //read wav with sndfile

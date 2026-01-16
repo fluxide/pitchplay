@@ -44,18 +44,6 @@ endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets Qt6::Gui Vorbis::vorbis Vorbis::vorbisfile)
 
-file(GLOB_RECURSE RESOURCE_FILES
-    "${CMAKE_SOURCE_DIR}/rsrc/*"
-)
-
-target_sources(${PROJECT_NAME} PRIVATE ${RESOURCE_FILES})
-
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    "${CMAKE_SOURCE_DIR}/rsrc"
-    "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-)
-
 set_target_properties(${PROJECT_NAME} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY
     "$<TARGET_FILE_DIR:${PROJECT_NAME}>"

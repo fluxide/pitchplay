@@ -36,7 +36,7 @@ Inter::Inter(QWidget* p) : QWidget(p)
 	fik->lab = new QLabel("Fade In", this);
 	pk->lab = new QLabel("Panning", this);
 	
-	//knob fonts
+	//knob label fonts
 	vk->lab->setFont(QFont("helvetica", 6, 500));
 	pitk->lab->setFont(QFont("helvetica", 6, 500));
 	fik->lab->setFont(QFont("helvetica", 6, 500));
@@ -55,6 +55,10 @@ Inter::Inter(QWidget* p) : QWidget(p)
 	pk->val = 50;
 
 	pl = new APlay(this);
+
+	hp = new QLabel("Hint Panel", this);
+	hp->setFont(QFont("helvetica", 6, 500));
+	hp->setWordWrap(true);
 }
 
 Inter::~Inter() //deletes everything, as this closes the app
@@ -70,6 +74,12 @@ Inter::~Inter() //deletes everything, as this closes the app
 	delete fik;
 	delete pk;
 	delete pl;
+	delete hp;
+}
+
+void Inter::hintm(const char* m)
+{
+	hp->setText(m);
 }
 
 void Inter::resizeEvent(QResizeEvent* e) //all the resize events are managed here
@@ -113,6 +123,8 @@ void Inter::resizeEvent(QResizeEvent* e) //all the resize events are managed her
 	pitk->labt->setGeometry(Ut::setRGeometry(1.1-cw2, 0.2, fac4, 0.25, e->size(), QSize(ssss, ss)));
 	fik->labt->setGeometry(Ut::setRGeometry(1.1-cw2, 0.3, fac4, 0.25, e->size(), QSize(ssss, ss)));
 	pk->labt->setGeometry(Ut::setRGeometry(1.1-cw2, 0.4, fac4, 0.25, e->size(), QSize(ssss, ss)));
+	
+	hp->setGeometry(Ut::setRGeometry(1-cw2, 0.6, fac3, 0.8, e->size(), QSize(ssss, ss)));
 }
 
 void Inter::mouseMoveEvent(QMouseEvent* e) //this catches mouse movement within the main window and calls the button animations so that they arent stuck sometimes
@@ -281,8 +293,26 @@ void Button::mouseMoveEvent(QMouseEvent* e)
 
 	if (rect2.contains(pos() + e->position().toPoint()) && !pressing) {
 		targ = 128;
+
+		switch (type) {
+
+		case BType::Start:
+			static_cast<Inter*>(parent())->hintm("Start playing audio");
+			break;
+		case BType::Stop:
+			static_cast<Inter*>(parent())->hintm("Stop playing audio");
+			break;
+		case BType::FileD:
+			static_cast<Inter*>(parent())->hintm("Open the file browser");
+			break;
+		case BType::CopyC:
+			static_cast<Inter*>(parent())->hintm("Copy the current setup into an event command \n Left click to copy Play BGM command \n Right click to copy Play SE command");
+			break;
+		}
 	}
 	else if (!pressing) {
+
+		static_cast<Inter*>(parent())->hintm("Hint Panel");
 		targ = 255;
 	}
 
@@ -420,6 +450,8 @@ void Button::mouseReleaseEvent(QMouseEvent* e)
 			GlobalUnlock(hMem);
 			SetClipboardData(fmt, hMem);
 			CloseClipboard();
+
+			pare->hintm("Copied!");
 		}
 			break;
 		}
@@ -623,7 +655,7 @@ void Fscr::mousePressEvent(QMouseEvent* e)
 
 void Fscr::mouseMoveEvent(QMouseEvent* e)
 {
-	//only matters for middle button
+	static_cast<Inter*>(parent())->hintm("Set the current file");
 
 	if (mbs) {
 		mousey = e->pos().y();
@@ -677,6 +709,7 @@ void LKnob::mousePressEvent(QMouseEvent* e)
 
 void LKnob::mouseMoveEvent(QMouseEvent* e)
 {
+	static_cast<Inter*>(parent())->hintm((std::string("Adjust ") + kw.toStdString()).c_str());
 	if (mbs) {
 		
 		//value is modified with the mouse movement
@@ -738,7 +771,7 @@ void LKnob::check() {
 	auto* p = static_cast<QLineEdit*>(QObject::sender());
 	std::string et = p->text().toStdString();
 	
-	if (!et.empty() && std::find_if(et.begin(), et.end(), [](unsigned char c) { return !(std::isdigit(c)|| c == '.'); }) == et.end() && std::stod(et) <= ext && std::stod(et) >= (kw=="Pitch")?1:0) {
+	if (!et.empty() && std::find_if(et.begin(), et.end(), [](unsigned char c) { return !(std::isdigit(c)|| c == '.'); }) == et.end() && std::stod(et) <= ext && std::stod(et) >= ((kw=="Pitch") ? 1 : 0)) {
 		//checks if the entered value is a valid number, and whether its also between allowed values
 		val = std::stod(et);
 		p->setText(et.c_str());

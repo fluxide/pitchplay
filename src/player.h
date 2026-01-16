@@ -4,6 +4,7 @@
 #include "miniaudio.h"
 #include <vorbis/vorbisfile.h>
 #include <mainwin.h>
+#include <mpg123.h>
 
 //audio player class
 class APlay {
