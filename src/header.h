@@ -1,12 +1,8 @@
 #pragma once
 
-#define NOMINMAX
+#define NOMINMAX //shuts intellisense up
 
-#include "QtQuick"
-#include "QtQml"
+//qt includes
 #include "QtGui"
-#include "QGuiApplication"
 #include "QtCore"
 #include "QtWidgets"
-#include "QObject"
-#include "Magick++.h"

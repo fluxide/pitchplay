@@ -7,7 +7,7 @@ BImage::BImage(const int w, const int h, int bt)
 	wi = w;
 	he = h;
 	ty = bt;
-	base = new uint8_t[wi * he * 4];
+	base = new uint8_t[wi * he * 4]; //size is not dynamic
 }
 
 BImage::~BImage()
@@ -17,25 +17,26 @@ BImage::~BImage()
 
 void BImage::redraw(double param, int iii)
 {
-	uint8_t qr = 255;
+	//param is a general purpose parameter value. mostly in 0-255 range. iii is used specifically for fscr rendering
+	uint8_t qr = 255; //parameter max value
 
-	double cx = wi / 2;
-	double cy = he / 2;
+	double cx = wi / 2; //center x
+	double cy = he / 2; //center y
 
-	double dx = wi / 3;
-	double dy = he / 3;
-	double da = 2 * M_PI / 3;
+	double dx = wi / 3; //delta x
+	double dy = he / 3; //delta y
+	double da = 2 * M_PI / 3; //delta angle 1,2,3
 	double da2 = 2 * M_PI / 4;
 	double da3 = 2 * M_PI / 6;
 
-	double o = 2*M_PI*param/qr;
+	double o = 2*M_PI*param/qr; //modified param values
 	double o1 = param/qr;
 	double o2 = 2*M_PI*param/qr/30;
 	double o3 = 2*M_PI*(param/qr+0.125);
 
-	switch (ty) {
+	switch (ty) { //what to render based on button type
 
-	case(0):
+	case(0): //start button, its a simple triangle 
 	{
 		fPoint p1(cx + dx * cos(da + o), cy + dy * sin(da + o));
 		fPoint p2(cx + dx * cos(2 * da + o), cy + dy * sin(2 * da + o));
@@ -52,16 +53,17 @@ void BImage::redraw(double param, int iii)
 
 				double col = in;
 
-				base[4 * pi] = static_cast<uint8_t>((sin(col) + 1) * qr / 2);
-				base[4 * pi + 1] = static_cast<uint8_t>((sin(col + o2) + 1) * qr / 2);
-				base[4 * pi + 2] = static_cast<uint8_t>((sin(col + 2 * o2) + 1) * qr / 2);
-				base[4 * pi + 3] = static_cast<uint8_t>(qr);
+				//pixel data is arranged in RGBA, one byte for each
+				base[4 * pi] = static_cast<uint8_t>((sin(col) + 1) * qr / 2); //red 
+				base[4 * pi + 1] = static_cast<uint8_t>((sin(col + o2) + 1) * qr / 2); //green
+				base[4 * pi + 2] = static_cast<uint8_t>((sin(col + 2 * o2) + 1) * qr / 2); //blue
+				base[4 * pi + 3] = static_cast<uint8_t>(qr); //alpha, mostly opaque
 			}
 		}
 	}
 	break;
 
-	case(1):
+	case(1): //stop button, a square
 	{
 		fPoint p1(cx + dx * cos(da2 + o3), cy + dy * sin(da2 + o3));
 		fPoint p2(cx + dx * cos(2 * da2 + o3), cy + dy * sin(2 * da2 + o3));
@@ -88,7 +90,7 @@ void BImage::redraw(double param, int iii)
 	}
 	break;
 
-	case(2):
+	case(2): //file dialog button, a hexagon
 	{
 		fPoint p1(cx + dx * cos(da3 + o), cy + dy * sin(da3 + o));
 		fPoint p2(cx + dx * cos(2 * da3 + o), cy + dy * sin(2 * da3 + o));
@@ -120,7 +122,7 @@ void BImage::redraw(double param, int iii)
 	}
 	break;
 
-	case(3):
+	case(3): //copy command button, a square hole
 	{
 		std::vector<double> cols1 = hsvrgb(fmod(o1 * 360 + 0 * 180, 360), 0.3, 0.8);
 		std::vector<double> cols2 = hsvrgb(fmod(o1 * 360 + 1 * 180, 360), 0.3, 0.8);
@@ -167,7 +169,7 @@ void BImage::redraw(double param, int iii)
 	}
 	break;
 
-	case(-1):
+	case(-1): //fscr widgets, random opaque colors with some texture
 	{
 		std::mt19937 gen;
 		constexpr double gm = static_cast<double>(gen.max());
@@ -200,18 +202,6 @@ void BImage::redraw(double param, int iii)
 uint8_t* BImage::getimp()
 {
 	return base;
-}
-
-void BImage::bblend(const char* f, double t)
-{
-	uint8_t qr = 255;
-
-	for (size_t i = 0; i < wi* he; ++i) {
-		im5[4 * i] = ((qr - t) * (qr - base[4 * i]) + t * base[4 * i]) / qr;
-		im5[4*i+1] = ((qr - t) * (qr - base[4 * i+1]) + t * base[4 * i+1]) / qr;
-		im5[4*i+2] = ((qr - t) * (qr - base[4 * i+2]) + t *  base[4 * i+2]) / qr;
-		im5[4*i+3] = ((qr - t) * (qr - base[4 * i+3]) + t * base[4 * i+3]) / qr;
-	}
 }
 
 float BImage::sign(fPoint p1, fPoint p2, fPoint p3)

@@ -15,6 +15,7 @@
 
 APlay::APlay(QWidget* p)
 {
+	//miniaudio device init. input values to the backend are always float 32
 	ma_device_config config = ma_device_config_init(ma_device_type_playback);
 	config.playback.format = ma_format_f32;
 	config.playback.channels = 2;
@@ -38,6 +39,7 @@ APlay::~APlay()
 
 void APlay::play(std::filesystem::path f)
 {
+	//open file first, if its not empty
 	if (f.generic_string()=="") return;
 	curf = f;
 	FILE* fi = nullptr;
@@ -47,11 +49,13 @@ void APlay::play(std::filesystem::path f)
 	_setmode(_fileno(fi), _O_BINARY);
 #endif
 
+	//dont start the device twice
 	if (!ma_device_is_started(&device)) {
 
 
+		//in all formats, the entire file is read once and recorded into a vector
 
-		if (f.extension() == ".ogg") {
+		if (f.extension() == ".ogg") { //read ogg with vorbis
 		
 			std::memset(&ogg, 0, sizeof(ogg));
 			ov_open_callbacks(fi, &ogg, NULL, 0, OV_CALLBACKS_NOCLOSE);
@@ -76,15 +80,15 @@ void APlay::play(std::filesystem::path f)
 				data.insert(data.end(), di, di + r);
 				tot += r;
 			}
-			ts = 2;
+			ts = 2; //data is int16_t type
 		}
 
-		if (f.extension() == ".mp3") {
+		if (f.extension() == ".mp3") { //read mp3 with mpg123, to be implemented
 		
 			return;
 		}
 
-		if (f.extension() == ".wav") {
+		if (f.extension() == ".wav") { //read wav with sndfile
 		
 			SF_INFO inf{};
 			SNDFILE* wf = sf_open(f.generic_string().c_str(), SFM_READ, &inf);
@@ -100,7 +104,7 @@ void APlay::play(std::filesystem::path f)
 				tot += 4*r;
 			}
 
-			ts = 4;
+			ts = 4; //data is integer type
 		}
 
 
@@ -108,7 +112,8 @@ void APlay::play(std::filesystem::path f)
 		ppinr = new char[tot/2];
 		ppinl = new char[tot/2];
 
-		for (unsigned int i = 0; i < tot;i += ts*chn) {
+		//channels are separated for convenience, both channels should be the same if the track will be mono
+		for (unsigned int i = 0; i < tot;i += ts*2) {
 
 			for (int iii = 0; iii < ts; iii++) {
 				ppinl[ii + iii] = data.data()[i+iii];
@@ -123,15 +128,19 @@ void APlay::play(std::filesystem::path f)
 			ii += ts;
 		}
 
-		ppout = new char[11 * tot * ts];
-		for (unsigned int i = 0;i < 11 * tot * ts;i++) ppout[i] = 0;
+		data.clear();
 
+		ppout = new char[4096*ts];
+		std::memset(ppout, 0, 4096*ts);
+
+		//start device
 		ma_device_start(&device);
 	}
 }
 
 void APlay::stop()
 {
+	//dont stop the device twice
 	if (ma_device_is_started(&device)) {
 		ma_device_stop(&device);
 		read = 0;
@@ -146,19 +155,20 @@ void APlay::stop()
 void playcb(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
 {
 	APlay* p = static_cast<APlay*>(pDevice->pUserData);
-	double pitch = std::clamp(static_cast<Inter*>(p->parent)->pitk->val/100,0.1,2.0);
+	double pitch = std::clamp(static_cast<Inter*>(p->parent)->pitk->val/100,0.1,2.0); //the parameters are converted to float for processing. the pitch value is clamped
 	double volume = static_cast<Inter*>(p->parent)->vk->val/100;
 	double fade_in = static_cast<Inter*>(p->parent)->fik->val/10;
 	double panning = static_cast<Inter*>(p->parent)->pk->val/100;
 	char* out = static_cast<char*>(pOutput);
 
-	assert(p->ts != 0);
+	assert(p->ts != 0); //ts cant be 0
 
 	char* sampr = (char*)p->ppinr;
 	char* sampl = (char*)p->ppinl;
-	float* sampout = (float*)p->ppout;
-	double ii = 0;
+	float* sampout = (float*)p->ppout; //output is always float
+	double ii = 0; //secondary index for pitching
 
+	//does very fine sinc interpolation
 	auto fr = [](char* buf, double p, int tot, int ts) {
 
 		int h = 4;
@@ -177,6 +187,7 @@ void playcb(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 fra
 			double w = (1+cos(2*M_PI*x/h))/2;
 			double s = x==0.0 ? w : sin(x*M_PI)/x*M_PI * w;
 
+			//input buffer is cast to the correct type based on ts
 			if (ts == 2) 
 				sum += ((int16_t*)buf)[idx] * s;
 			else if (ts == 4)
@@ -188,15 +199,17 @@ void playcb(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 fra
 	};
 
 	for (unsigned int i = 0; i < 2*frameCount; i+=2) {
-
-		double ci = ii + p->read;
-		sampout[i] = static_cast<float>(((1 - panning) * volume * fr(sampl, ci, p->tot/p->ts/2, p->ts))/pow(2,8*p->ts-1));
-		sampout[i+1] = static_cast<float>((panning*volume* fr(sampr, ci, p->tot/ p->ts / 2, p->ts)) / pow(2, 8 * p->ts-1));
-		ii+= pitch;
+		
+		double ci = ii + p->read; //current read index
+		double fivol = volume * std::clamp((ci / pitch) / (44100 * fade_in + 0.1),0.0,1.0); //volume, with fade in handled
+		//processed data is cast to float, and interleaved. panning is done linearly
+		sampout[i] = static_cast<float>(((1 - panning) * fivol * fr(sampl, ci, p->tot/p->ts/2, p->ts))/pow(2,8*p->ts-1));
+		sampout[i+1] = static_cast<float>((panning*fivol* fr(sampr, ci, p->tot/ p->ts / 2, p->ts)) / pow(2, 8 * p->ts-1));
+		ii+= pitch; //advance the reader by pitch
 	}
 
-	p->read += ii;
-	p->read = fmod(p->read,p->tot/(p->ts * 2)-2*frameCount-4);
+	p->read += ii; //advance total read index after one loop
+	p->read = fmod(p->read,p->tot/(p->ts * 2)-2*frameCount-4); //loop back safely
 
-	std::memcpy(out, p->ppout, 8 * static_cast<size_t>(frameCount));
+	std::memcpy(out, p->ppout, 8 * static_cast<size_t>(frameCount)); //write output
 }

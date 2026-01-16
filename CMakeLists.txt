@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
 project(pitchplay VERSION 1.0.0
 	DESCRIPTION "listen to sound files, rpgmaker style"
@@ -23,9 +23,11 @@ file(GLOB_RECURSE HEADER_FILES
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 
+set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick Core Widgets Gui)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 find_package(Vorbis CONFIG REQUIRED)
 
 find_package(SndFile CONFIG)
@@ -40,7 +42,7 @@ if(TARGET MPG123::libmpg123)
 	target_link_libraries(${PROJECT_NAME} PRIVATE MPG123::libmpg123)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Quick Qt6::Core Qt6::Widgets Qt6::Gui Vorbis::vorbis Vorbis::vorbisfile)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets Qt6::Gui Vorbis::vorbis Vorbis::vorbisfile)
 
 file(GLOB_RECURSE RESOURCE_FILES
     "${CMAKE_SOURCE_DIR}/rsrc/*"

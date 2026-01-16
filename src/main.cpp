@@ -1,3 +1,11 @@
+/*pitchplay
+  play sound files, rpgmaker style.
+
+  this program is an audio player with a few utilities. originally made for the collective unconscious project,
+  as a simple tool for developers to preview ogg files in varying pitches. it also offers a copy command utility.
+
+  made by fluxide, 2026.
+*/
 
 #define MINIAUDIO_IMPLEMENTATION
 
