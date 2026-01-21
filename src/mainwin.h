@@ -62,6 +62,47 @@ private:
 
 };
 
+//slider widget
+class Slider : public QWidget {
+
+	Q_OBJECT
+
+public:
+
+	Slider(QWidget* p, const char* kww, bool d = false);
+	~Slider();
+	Slider(const Slider& l)=default;
+	double val = 0;
+	double valt = 0; //value tween
+	QLabel* lab=nullptr; //label
+	QLineEdit* labt=nullptr; //label text
+	QString kw = ""; //keyword (what the slider represents)
+	double ext=0; //extent, max value the value can have 
+	bool direction = false; //creates a vertically algined slider if true, horizontal otherwise. for now, labels are disabled if true
+	bool mbs = false;
+
+public slots:
+
+	void check(); //checks if the value entered is a number
+
+signals:
+
+	void valChanged(double valyt);
+
+protected:
+
+	void mousePressEvent(QMouseEvent* e) override;
+	void mouseMoveEvent(QMouseEvent* e) override;
+	void mouseReleaseEvent(QMouseEvent* e) override;
+	void paintEvent(QPaintEvent* e) override;
+	void winit();
+
+private:
+
+	bool mbst = false;
+
+};
+
 //file scroller widget
 class Fscr : public QAbstractScrollArea {
 
@@ -73,14 +114,16 @@ public:
 	~Fscr();
 	Fscr(const Fscr& f) = default;
 
-	void dlay(); //delete layout
-	void gimg(); //generate images
 	QVector<std::filesystem::path>& gfiles(); //get files
 	int sel = -1; //currently selected file's index
+	Slider* sl; //a slider used as a vertical scroll bar for the viewport
 
 public slots:
 
 	void mmbrec(); //mouse middle button receive
+	void sbrec(); //scroll bar receive
+	void winit2(double vt);
+
 
 protected:
 
@@ -92,57 +135,21 @@ protected:
 	void mouseMoveEvent(QMouseEvent* e) override;
 	void mouseReleaseEvent(QMouseEvent* e) override;
 	void winit();
-	void imdr(int si, int ei); //image draw
 
 private:
 
 	QVector<std::filesystem::path> files; //file array
-	std::vector<BImage*> ims; 
 	int curvl = 0; //current value
-	int mousey = 0; 
-	QPointF lp;
-	bool mbs=false; //middle button scroll (is scrolling?)
-	bool mbst=false; //middle button scroll timer (is started?)
+	int mousey = 0;
+	QPointF lp; //last (mouse) position
+	bool mbs = false; //middle button scroll (is scrolling?)
+	bool mbst = false; //middle button scroll timer (is started?)
+	bool mbst2 = false; //scroll bar scroll timer (is started?)
+	double subcurvl = 0; //prevents a dangling pointer in scroll bar processing
 
 	double tone = 0;
 
 	std::thread wt;
-};
-
-//linear knob widget
-class LKnob : public QWidget {
-
-	Q_OBJECT
-
-public:
-
-	LKnob(QWidget* p, const char* kww);
-	~LKnob();
-	LKnob(const LKnob& l)=default;
-	double val = 0;
-	double valt = 0; //value tween
-	QLabel* lab=nullptr; //label
-	QLineEdit* labt=nullptr; //label text
-	QString kw = ""; //keyword (what the knob represents)
-	double ext=0; //extent 
-
-public slots:
-
-	void check(); //checks if the value entered is a number
-
-protected:
-
-	void mousePressEvent(QMouseEvent* e) override;
-	void mouseMoveEvent(QMouseEvent* e) override;
-	void mouseReleaseEvent(QMouseEvent* e) override;
-	void paintEvent(QPaintEvent* e) override;
-	void winit();
-
-private:
-
-	bool mbs = false;
-	bool mbst = false;
-
 };
 
 class Inter : public QWidget {
@@ -160,10 +167,10 @@ public:
 	QThread* mt; //main thread
 	std::string cdr = "."; //current dir
 	std::filesystem::path crf = ""; //current file (to play)
-	LKnob* pitk = nullptr; //pitch knob
-	LKnob* fik = nullptr; //fade in knob
-	LKnob* vk = nullptr; //volume knob
-	LKnob* pk = nullptr; //pan knob
+	Slider* pitk = nullptr; //pitch knob
+	Slider* fik = nullptr; //fade in knob
+	Slider* vk = nullptr; //volume knob
+	Slider* pk = nullptr; //pan knob
 	APlay* pl; //audio player
 	QLabel* hp = nullptr; //hint panel
 

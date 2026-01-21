@@ -168,34 +168,6 @@ void BImage::redraw(double param, int iii)
 		}
 	}
 	break;
-
-	case(-1): //fscr widgets, random opaque colors with some texture
-	{
-		std::mt19937 gen;
-		constexpr double gm = static_cast<double>(gen.max());
-		double p2 = param+0.1;
-		int sg = p2!=0 ? p2/abs(p2) : 1;
-
-		for (int y = 0;y < he;y++) {
-			for (int x = 0; x < wi;x++) {
-
-				int pi = wi * y + x;
-
-				double in = static_cast<double>(70) * fmod((pi + param) , 150) / 100;
-
-				double col = in + 2.4;
-
-				gen.seed(iii);
-				std::vector<double> cols = hsvrgb(360*(gen() / gm), 0.3+(sin(col+o)+1)/4*(gen() / gm), 0.5+ 0.3 * sg + (sin(col + o)+1)/2*0.1*(gen() / gm) );
-
-				base[4 * pi] = static_cast<uint8_t>(fmod(cols[0]*256,256));
-				base[4 * pi + 1] = static_cast<uint8_t>(fmod(cols[1]*256,256));
-				base[4 * pi + 2] = static_cast<uint8_t>(fmod(cols[2]*256,256));
-				base[4 * pi + 3] = static_cast<uint8_t>(qr);
-			}
-		}
-	}
-	break;
 	}
 }
 

@@ -25,10 +25,10 @@ Inter::Inter(QWidget* p) : QWidget(p)
 	fdret(); //refresh the fscr in case there is anything in the working dir
 
 	//knob inits
-	vk = new LKnob(this, "Volume");
-	pitk = new LKnob(this, "Pitch");
-	fik = new LKnob(this, "Fade In");
-	pk = new LKnob(this, "Panning");
+	vk = new Slider(this, "Volume");
+	pitk = new Slider(this, "Pitch");
+	fik = new Slider(this, "Fade In");
+	pk = new Slider(this, "Panning");
 	
 	//knob labels
 	vk->lab = new QLabel("Volume", this);
@@ -106,7 +106,7 @@ void Inter::resizeEvent(QResizeEvent* e) //all the resize events are managed her
 
 	//fscr resizing
 	fscr->setGeometry(Ut::setRGeometry(0, 0, fac2, 1, e->size(), QSize(sss, e->size().height())));
-	fscr->viewport()->setGeometry(Ut::setRGeometry(0, 0, fac2, 1, e->size(), 0.99*QSize(sss, e->size().height())));
+	fscr->viewport()->setGeometry(Ut::setRGeometry(0, 0, fac2, 1.2, e->size(), 0.99*QSize(sss, e->size().height())));
 
 	//knob resizing, and their labels. this looks very ugly i know
 	vk->setGeometry(Ut::setRGeometry(1-cw2, 0.15, fac3, 0.2, e->size(), QSize(ssss, ss)));
@@ -144,7 +144,6 @@ void Inter::fdret() {
 			cdr = fd->selectedFiles()[0].toStdString();
 		if(CMAKE_INTDIR=="Debug")
 			qDebug() << cdr;
-		fscr->dlay();
 		fd->deleteLater();
 	}
 
@@ -161,8 +160,8 @@ void Inter::fdret() {
 			fscr->gfiles().append(f);
 		}
 	}
-	fscr->gimg();
 
+	fscr->sl->ext = fscr->gfiles().length()*10;
 	fscr->updateGeometry();
 	fscr->viewport()->update();
 
@@ -199,7 +198,7 @@ void Button::winit() //initalizes animation timers and the graphic rendering thr
 	}
 }
 
-void Fscr::winit() //same thing but for fscr
+void Fscr::winit() //same thing but for fscr, this one is for middle mouse button drag animations
 {
 
 	if (!mbst) {
@@ -212,7 +211,19 @@ void Fscr::winit() //same thing but for fscr
 	}
 }
 
-void LKnob::winit() //and for lknob
+void Fscr::winit2(double vt) //this one handles scroll bar animations
+{
+	if (!mbst2) {
+		mbst2 = true;
+
+		QTimer::singleShot(20, [&]() {
+			
+			sbrec();
+		});
+	}
+}
+
+void Slider::winit() //and for Slider
 {
 
 	if (!mbst) {
@@ -223,36 +234,6 @@ void LKnob::winit() //and for lknob
 			repaint();
 		});
 	}
-}
-
-void Fscr::imdr(int si, int ei) {
-	
-	double ll = 0.2 * log(std::min(width(), height())) / log(1.04);
-	int l = ll * gfiles().size();
-
-	wt = std::thread([this](int sin ,int ein, int ll) {
-
-		for (int i = sin; i < ein; i++) { //only draws the requested interval
-			if(i!=sel) 
-				ims[i]->redraw(abs(255*tone/ll), i);
-			else    
-				ims[i]->redraw(-128*abs(tone/ll), -1-i); //if file is selected, darken it and invert hue
-		
-		}
-	}, si, ei, l);
-
-	wt.detach();
-}
-
-void Fscr::gimg() {
-	
-	for (int i = 0;i < files.size();i++) {
-		ims.push_back(new BImage(40, 10, -1));
-	}
-
-	int s = files.size();
-
-	imdr(0,std::min(s,50)); //50 is an arbitrary number here, i didnt want to calculate how many widgets are visible after a new initialization
 }
 
 Button::~Button()
@@ -494,7 +475,7 @@ void Fscr::mmbrec()
 {
 	mbst = false;
 	double drag = mousey - lp.y();
-	scrollContentsBy(0, drag/10);
+	scrollContentsBy(0, drag/20);
 	
 	if (mbs) winit();
 
@@ -502,26 +483,21 @@ void Fscr::mmbrec()
 
 Fscr::Fscr(QWidget* p) : QAbstractScrollArea(p)
 {
-	setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); //no scrollbars, for a simpler ui
+	setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+	
+	sl = new Slider(this,"scroll", true);
+	sl->direction = true;
+	sl->ext = 0;
 	setMouseTracking(true);
+	QObject::connect(sl, &Slider::valChanged, this, &Fscr::winit2);
 
 	winit();
 }
 
 Fscr::~Fscr()
 {
-	dlay();
-}
-
-void Fscr::dlay()
-{
-	//deletes all the widget images
-	for (int i = 0;i < ims.size();i++) {
-		delete ims[i];
-	}
-	
-	ims.clear();
+	verticalScrollBar()->deleteLater();
 }
 
 QVector<std::filesystem::path>& Fscr::gfiles()
@@ -529,21 +505,30 @@ QVector<std::filesystem::path>& Fscr::gfiles()
 	return files;
 }
 
+void Fscr::sbrec()
+{
+	mbst2 = false;
+	double ll = 0.2 * log(std::min(width(), height())) / log(1.04);
+	curvl = ll*sl->val/10.0;
+	viewport()->update();
+
+}
+
 void Fscr::scrollContentsBy(int dx, int dy)
 {
 	//updates curvl and updates the viewport (calls paintEvent) 
-	double ll =  0.2 * log(std::min(width(), height())) / log(1.04);;
+	double ll =  0.2 * log(std::min(width(), height())) / log(1.04);
 	int l = static_cast<int>(ll*files.size());
 	curvl += static_cast<int>(dy*ll/2);
 	
 	//wrap around
-	if (curvl < (-l)) {
-		curvl = 0;
+	if (tone < 0) {
+		curvl = l-ll/2;
 		tone += l;
 	} 
 	
 	if (curvl > l) {
-		curvl = 0;
+		curvl = ll/2;
 		tone -= l;
 	}
 
@@ -569,8 +554,7 @@ void Fscr::wheelEvent(QWheelEvent* e)
 
 void Fscr::resizeEvent(QResizeEvent* e)
 {
-	//this used to be for my custom resizing function which i have deleted
-	resize(e->size());
+	sl->setGeometry(Ut::setRGeometry(0.95,0,0.05,1.3,size())); //resize scroll bar
 }
 
 void Fscr::paintEvent(QPaintEvent* e)
@@ -590,6 +574,8 @@ void Fscr::paintEvent(QPaintEvent* e)
 	if (!(l > 0)) return; //return if no files, and avoid 0 division
 
 	tone = fmod(tone,l);
+	std::mt19937 gen;
+	constexpr double gm = static_cast<double>(gen.max());
 
 	for (int ii = tone; ii < e->rect().height() + tone; ii++) { //paints scanlines on the viewport
 		
@@ -601,13 +587,19 @@ void Fscr::paintEvent(QPaintEvent* e)
 		
 		if (ci != co) { //co is current (index) old
 			
-			imdr(ci, ci+1); //redraw images one at a time
-			if(ci != sel) //invert text color if selected
-				painter.setPen(QColor(0, 0, 0));
-			else painter.setPen(QColor(255, 255, 255));
+			gen.seed(ci);
+			QImage bim(1,1,QImage::Format_RGBA8888);
 
-			QImage bs(ims[ci]->getimp(), 40, 10, QImage::Format_RGBA8888);
-			painter.drawImage(QPointF(0,i2), bs.scaled(QSize(e->rect().width(), ll*0.9)));
+			if (ci != sel) { 
+				painter.setPen(QColor(0, 0, 0));
+				bim.fill(QColor::fromHsv(360 * (gen() / gm), 50 * (gen() / gm), 205 + 50 * (gen() / gm))); //random light color if not selected
+			}
+			else { 
+				painter.setPen(QColor(255, 255, 255)); //invert text color if selected
+				bim.fill(QColor::fromHsv(360 * (gen() / gm), 50 * (gen() / gm), 50 + 50 * (gen() / gm))); //random dark color if selected 
+			}
+
+			painter.drawImage(QPointF(0,i2), bim.scaled(QSize(e->rect().width(), ll*0.9)));
 			painter.drawText(QRect(0, i2 , e->rect().width(), ll), files[ci].filename().generic_string().c_str(), to);
 			co = ci;
 		}
@@ -616,8 +608,11 @@ void Fscr::paintEvent(QPaintEvent* e)
 	
 	painter.end();
 
-	if (abs(curvl - tone) > 1) //recall if target isnt reached yet
+	if (abs(curvl - tone) > 1) { //recall if target isnt reached yet
 		winit();
+		if(!sl->mbs)
+		sl->val = tone/l * sl->ext;
+	}
 }
 
 void Fscr::mousePressEvent(QMouseEvent* e)
@@ -634,7 +629,6 @@ void Fscr::mousePressEvent(QMouseEvent* e)
 		static_cast<Inter*>(parent())->crf = files[cy].generic_string().c_str();
 		static_cast<Inter*>(parent())->pl->stop();
 		sel = cy;
-		imdr(cy, cy + 1);
 		viewport()->update();
 	}
 	
@@ -673,32 +667,38 @@ void Fscr::mouseReleaseEvent(QMouseEvent* e)
 	}
 }
 
-LKnob::LKnob(QWidget* p, const char* kww) : QWidget(p)
+Slider::Slider(QWidget* p, const char* kww, bool d) : QWidget(p)
 {
 	setMouseTracking(true);
 	kw = kww;
-	labt = new QLineEdit(parentWidget());
-	labt->setFont(QFont("helvetica", 6, 500));
-	QObject::connect(labt, &QLineEdit::editingFinished, this, &LKnob::check); //check when a new value is entered
+	direction = d;
+	if (!direction) { 
+		labt = new QLineEdit(parentWidget());
+		labt->setFont(QFont("helvetica", 6, 500));
+		QObject::connect(labt, &QLineEdit::editingFinished, this, &Slider::check); //check when a new value is entered
+	}
 }
 
-LKnob::~LKnob()
+Slider::~Slider()
 {
+	if (direction) return;
 	lab->deleteLater();
 	labt->deleteLater();
 }
 
-void LKnob::mousePressEvent(QMouseEvent* e)
+void Slider::mousePressEvent(QMouseEvent* e)
 {
 	if (e->button() == Qt::MouseButton::LeftButton) {
 
 		//modify the knob value
 
-		val = static_cast<double>(e->pos().x()) / width() * ext;
+		if(!direction) val = static_cast<double>(e->pos().x()) / width() * ext;
+		else val = static_cast<double>(e->pos().y()) / parentWidget()->height() * ext;
 		
 		double min = kw == "Pitch" ? 10.0 : 0.0; //pitch knob has a min value
 
-		val = std::clamp(floor(val /10) * 10, min, ext); //snapping and clamping
+		if (!direction) val = std::clamp(floor(val /10) * 10, min, ext); //snapping and clamping
+		else val = std::clamp(val, min, ext); //snapping and clamping
 
 		if (!mbs) {
 			mbs = true;
@@ -707,29 +707,32 @@ void LKnob::mousePressEvent(QMouseEvent* e)
 	}
 }
 
-void LKnob::mouseMoveEvent(QMouseEvent* e)
+void Slider::mouseMoveEvent(QMouseEvent* e)
 {
-	static_cast<Inter*>(parent())->hintm((std::string("Adjust ") + kw.toStdString()).c_str());
+	if (!direction) static_cast<Inter*>(parent())->hintm((std::string("Adjust ") + kw.toStdString()).c_str());
 	if (mbs) {
 		
 		//value is modified with the mouse movement
 		double min = kw == "Pitch" ? 10.0 : 0.0; //pitch knob has a min value
 
-		val = static_cast<double>(e->pos().x()) / width() *ext;
+		if(!direction) val = static_cast<double>(e->pos().x()) / width() *ext;
+		else val = static_cast<double>(e->pos().y()) / parentWidget()->height() *ext;
 		val = std::clamp(floor(val/10)*(10), min, ext);
 		winit();
 	}
 }
 
-void LKnob::mouseReleaseEvent(QMouseEvent* e)
+void Slider::mouseReleaseEvent(QMouseEvent* e)
 {
 	if (mbs) {
 		mbs = false;
 	}
 }
 
-void LKnob::paintEvent(QPaintEvent* e)
+void Slider::paintEvent(QPaintEvent* e)
 {
+	if (ext == 0) return;
+
 	mbst = false;
 	valt += (val - valt) * 0.5;
 	QPainter painter(this);
@@ -737,36 +740,57 @@ void LKnob::paintEvent(QPaintEvent* e)
 	std::vector<uint8_t> d = { 0,0,0,255 };
 	QImage body(d.data(), 1, 1, QImage::Format_RGBA8888);
 	
-	for (int i = 0; i < e->rect().width(); i++) {
-		
-		int ma = 3; //margin (makes the knob cursor appear bigger than the knob line)
-		double c = std::clamp(2*log(1000 *((static_cast<double>(i) / e->rect().width() + valt/ext * 0.09))) / log(1.2), 64.0, 192.0);
+	if (!direction) { //horizontal slider
+		for (int i = 0; i < e->rect().width(); i++) {
 
-		if (abs(static_cast<double>(i) / e->rect().width() - valt/ext) < 0.05)
-		{
-			//render the cursor
-			ma = 0;
-			c = 192 - c;
+			int ma = 3; //margin (makes the knob cursor appear bigger than the knob line)
+			double c = std::clamp(2 * log(1000 * ((static_cast<double>(i) / e->rect().width() + valt / ext * 0.09))) / log(1.2), 64.0, 192.0);
+
+			if (abs(static_cast<double>(i) / e->rect().width() - valt / ext) < 0.05)
+			{
+				//render the cursor
+				ma = 0;
+				c = 192 - c;
+			}
+
+			if (fmod((ext / 10) * static_cast<double>(i) / e->rect().width(), 1) < 0.15) {
+				//render the snap/grid lines
+				c = 192 - c;
+			}
+
+			painter.setPen(QColor(c, c, c));
+			painter.drawLine(QPointF(i, ma), QPointF(i, e->rect().height() - ma));
+
 		}
+	}	
+	else { //vertical slider
+		for (int i = 0; i < e->rect().height(); i++) {
 
-		if (fmod((ext/10) * static_cast<double>(i) / e->rect().width(), 1) < 0.15) {
-			//render the snap/grid lines
-			c = 192 - c;
+			double c = std::clamp(2 * log(1000 * ((static_cast<double>(i) / e->rect().height() + valt / ext * 0.09))) / log(1.2), 64.0, 192.0);
+
+			if (abs(static_cast<double>(i) / e->rect().height() - valt / ext) < 0.05)
+			{
+				//render the cursor
+				c = 192 - c;
+			}
+
+			painter.setPen(QColor(c, c, c));
+			painter.drawLine(QPointF(0, i), QPointF(e->rect().width(), i));
+
 		}
-
-		painter.setPen(QColor(c,c,c));
-		painter.drawLine(QPointF(i,ma), QPointF(i,e->rect().height()-ma));
-
 	}
 
-	labt->setText(std::to_string(val).c_str()); //update the label with value change
+	if (!direction) labt->setText(std::to_string(val).c_str()); //update the label with value change, if it exists
 	painter.end();
 
-	if (abs(val - valt) > 0.01) //recall if target is not reached yet
+	if (abs(val - valt) > 0.01) { //recall if target is not reached yet
 		winit();
+		if(mbs)
+			emit valChanged(valt / 10.0); //emit signal if value changed
+	}
 }
 
-void LKnob::check() {
+void Slider::check() {
 
 	auto* p = static_cast<QLineEdit*>(QObject::sender());
 	std::string et = p->text().toStdString();
