@@ -22,6 +22,16 @@ Inter::Inter(QWidget* p) : QWidget(p)
 		buttons.append(nb);
 	}
 	fscr = new Fscr(this);
+	std::ifstream ld("lastpbdir"); 
+	std::string ldc;
+	if (ld.good()) {
+		while(std::getline(ld, ldc)) //read the last project base directory from lastpbdir, and initialize like that
+		cdr = ldc;
+		fscr->proot = cdr;
+		fscr->curd = cdr;
+	}
+	else cdr = ".";
+	ld.close();
 	fdret(); //refresh the fscr in case there is anything in the working dir
 
 	//knob inits
@@ -106,7 +116,7 @@ void Inter::resizeEvent(QResizeEvent* e) //all the resize events are managed her
 
 	//fscr resizing
 	fscr->setGeometry(Ut::setRGeometry(0, 0, fac2, 1, e->size(), QSize(sss, e->size().height())));
-	fscr->viewport()->setGeometry(Ut::setRGeometry(0, 0, fac2, 1.2, e->size(), 0.99*QSize(sss, e->size().height())));
+	fscr->viewport()->setGeometry(Ut::setRGeometry(0, 0, fac2, 1, e->size(), 0.99*QSize(sss, e->size().height())));
 
 	//knob resizing, and their labels. this looks very ugly i know
 	vk->setGeometry(Ut::setRGeometry(1-cw2, 0.15, fac3, 0.2, e->size(), QSize(ssss, ss)));
@@ -140,28 +150,46 @@ void Inter::fdret() {
 	
 	if (QObject::sender() != nullptr) { //sender is the file dialog, catch it and get the selected directory from it
 		auto* fd = static_cast<QFileDialog*>(QObject::sender());
-		if (fd->selectedFiles().size() > 0)
+		if (fd->selectedFiles().size() > 0) {
 			cdr = fd->selectedFiles()[0].toStdString();
+			fscr->proot = std::filesystem::path(cdr);
+			fscr->curd = fscr->proot;
+
+			std::ofstream prdirs("lastpbdir");
+			prdirs.write(cdr.c_str(), cdr.size()*sizeof(char));
+			prdirs.close();
+		}
 		if(CMAKE_INTDIR=="Debug")
 			qDebug() << cdr;
 		fd->deleteLater();
 	}
 
 	auto cd = std::filesystem::path(cdr);
+
 	std::filesystem::directory_iterator cdirit(cd);
 
 	fscr->gfiles().clear();
 	fscr->sel = -1; //nothing is selected immediately
 
 	std::string ex[3] = {".wav",".ogg",".mp3"}; //supported format list, files are only appended if the extension is here
+	int dpos = 0;
 
 	for (const auto& f : cdirit) {
 		if (f.is_regular_file() && std::find(std::begin(ex), std::end(ex), f.path().extension()) != std::end(ex)) {
 			fscr->gfiles().append(f);
 		}
-	}
 
-	fscr->sl->ext = fscr->gfiles().length()*10;
+		else if (f.is_directory()) {
+			fscr->gfiles().insert(fscr->gfiles().begin() + dpos, f.path());
+			dpos++;
+		}
+	}
+	
+	if (fscr->curd != fscr->proot)
+		fscr->gfiles().insert(fscr->gfiles().begin(), cd.parent_path());
+
+	fscr->searchUpdate("");
+	fscr->sl->ext = fscr->gfilesd().size()*10;
 	fscr->updateGeometry();
 	fscr->viewport()->update();
 
@@ -221,6 +249,61 @@ void Fscr::winit2(double vt) //this one handles scroll bar animations
 			sbrec();
 		});
 	}
+}
+
+void Fscr::searchUpdate(const QString& text) //filters files in file array according to the search string
+{
+	std::string arr = text.toStdString();
+
+	filesdisp.clear();
+
+	for (auto f : files) {
+
+		filesdisp.push_back(f.generic_string());
+	}
+
+	int fp = 0;
+
+	for (auto fi : files) { //file in file array
+
+		int chp = 0;
+		bool fne = false, fae = false;
+		bool skipfp = false;
+		if (fi.empty()) continue;
+		std::string fw = fi.filename().generic_string();
+		int fcpu = fw.find(std::toupper(arr[0]));
+		int fcpl = fw.find(std::tolower(arr[0]));
+
+		if (arr.empty()) break;
+		if (fcpu == std::string::npos && fcpl == std::string::npos) { 
+			filesdisp.erase(filesdisp.begin() + fp);
+			continue;
+		}
+
+		int fcp=0;
+		if (fcpu == std::string::npos) fcp = fcpl;
+		else if (fcpl == std::string::npos) fcp = fcpu;
+		else fcp = std::min(fcpu, fcpl);
+
+		for (auto ch : arr) { //char in search string
+
+			if (chp>=fw.length() || (std::tolower(ch) != fw.c_str()[fcp + chp] && std::toupper(ch) != fw.c_str()[fcp + chp])) {
+			
+				filesdisp.erase(filesdisp.begin() + fp); //remove file if the ch isnt anywhere
+				skipfp = true;
+				break;
+			}
+
+			chp++;
+		}
+		
+		if (skipfp) continue; 
+		fp++;
+	}
+
+	sel = -1;
+	sl->ext = gfilesd().size() * 10;
+	viewport()->update();
 }
 
 void Slider::winit() //and for Slider
@@ -284,10 +367,10 @@ void Button::mouseMoveEvent(QMouseEvent* e)
 			static_cast<Inter*>(parent())->hintm("Stop playing audio");
 			break;
 		case BType::FileD:
-			static_cast<Inter*>(parent())->hintm("Open the file browser");
+			static_cast<Inter*>(parent())->hintm("Select project root");
 			break;
 		case BType::CopyC:
-			static_cast<Inter*>(parent())->hintm("Copy the current setup into an event command \n Left click to copy Play BGM command \n Right click to copy Play SE command");
+			static_cast<Inter*>(parent())->hintm("Copy the current setup into an event command: \n Left click to copy Play BGM command \n Right click to copy Play SE command");
 			break;
 		}
 	}
@@ -338,7 +421,7 @@ void Button::mouseReleaseEvent(QMouseEvent* e)
 				qDebug() << "filed";
 
 			//initalize file dialog and connect it to the file dialog return function
-			auto* fd = new QFileDialog(this, "Choose Directory", pare->cdr.c_str(), "Sound (*.ogg, *.wav, *.mp3)");
+			auto* fd = new QFileDialog(this, "Choose Project Root", pare->fscr->proot.generic_string().c_str(), "Sound (*.ogg, *.wav, *.mp3)");
 			fd->setFileMode(QFileDialog::FileMode::Directory);
 			fd->setAcceptMode(QFileDialog::AcceptOpen);
 			QObject::connect(fd, &QFileDialog::finished, pare, &Inter::fdret);
@@ -348,6 +431,10 @@ void Button::mouseReleaseEvent(QMouseEvent* e)
 		
 		case(BType::CopyC):
 		{
+			pare->hintm("Nothing was copied.");
+
+			if (pare->fscr->sel < 0) break;
+
 			//copy the corresponding event command into the clipboard. only works on windows for now
 			if (CMAKE_INTDIR == "Debug") { //debug setup for reading rpgmaker clipboard content
 				qDebug() << "copy";
@@ -409,8 +496,14 @@ void Button::mouseReleaseEvent(QMouseEvent* e)
 				u8(0); //termination
 			};
 
-			QString fstr2 = QString::fromStdString(static_cast<Inter*>(parent())->crf.filename().string());
-			QString fstr = QFileInfo(fstr2).completeBaseName(); //gets filename without extension
+			//get the path of the file, relative to Music or Sound folders
+			std::filesystem::path fp = pare->fscr->proot / (e->button() == Qt::MouseButton::LeftButton ? "Music/" : "Sound/");
+			std::string curdch = pare->fscr->curd.generic_string();
+			std::filesystem::path relpath = "";
+			if(curdch.length()>fp.generic_string().size()) 
+				relpath = std::string(curdch.begin() + fp.generic_string().size(), curdch.end());
+
+			QString fstr = QString::fromStdString((relpath.generic_string().empty() ? (pare->crf.stem()) : (relpath / pare->crf.stem())).string());
 
 			if (fstr.toStdString() == "") break;
 
@@ -492,6 +585,10 @@ Fscr::Fscr(QWidget* p) : QAbstractScrollArea(p)
 	setMouseTracking(true);
 	QObject::connect(sl, &Slider::valChanged, this, &Fscr::winit2);
 
+	search = new QLineEdit("", this);
+	search->setFont(QFont("helvetica", 8, 500));
+	QObject::connect(search, &QLineEdit::textChanged, this, &Fscr::searchUpdate);
+
 	winit();
 }
 
@@ -503,6 +600,11 @@ Fscr::~Fscr()
 QVector<std::filesystem::path>& Fscr::gfiles()
 {
 	return files;
+}
+
+std::vector<std::filesystem::path>& Fscr::gfilesd()
+{
+	return filesdisp;
 }
 
 void Fscr::sbrec()
@@ -518,7 +620,7 @@ void Fscr::scrollContentsBy(int dx, int dy)
 {
 	//updates curvl and updates the viewport (calls paintEvent) 
 	double ll =  0.2 * log(std::min(width(), height())) / log(1.04);
-	int l = static_cast<int>(ll*files.size());
+	int l = static_cast<int>(ll*filesdisp.size());
 	curvl += static_cast<int>(dy*ll/2);
 	
 	//wrap around
@@ -554,7 +656,8 @@ void Fscr::wheelEvent(QWheelEvent* e)
 
 void Fscr::resizeEvent(QResizeEvent* e)
 {
-	sl->setGeometry(Ut::setRGeometry(0.95,0,0.05,1.3,size())); //resize scroll bar
+	sl->setGeometry(Ut::setRGeometry(0.95,0,0.05,0.95,size())); //resize scroll bar
+	search->setGeometry(Ut::setRGeometry(0,0.95,1,0.05,size())); //resize scroll bar
 }
 
 void Fscr::paintEvent(QPaintEvent* e)
@@ -569,7 +672,7 @@ void Fscr::paintEvent(QPaintEvent* e)
 	to.setWrapMode(QTextOption::WrapAnywhere);
 	double ll = 0.2 * log(std::min(width(), height())) / log(1.04);
 	int co = -1;
-	int l = ll * gfiles().size();
+	int l = ll * gfilesd().size();
 
 	if (!(l > 0)) return; //return if no files, and avoid 0 division
 
@@ -583,24 +686,52 @@ void Fscr::paintEvent(QPaintEvent* e)
 		double i2 = fmod(ii - tone, l);
 
 		int ci = floor(i / ll); // current index, index of which widget the current scanline falls 
-		int ei = fmod((e->rect().height()/ll+1),gfiles().size());
+		int ei = fmod((e->rect().height()/ll+1),gfilesd().size());
 		
 		if (ci != co) { //co is current (index) old
 			
 			gen.seed(ci);
 			QImage bim(1,1,QImage::Format_RGBA8888);
-
-			if (ci != sel) { 
-				painter.setPen(QColor(0, 0, 0));
-				bim.fill(QColor::fromHsv(360 * (gen() / gm), 50 * (gen() / gm), 205 + 50 * (gen() / gm))); //random light color if not selected
-			}
-			else { 
-				painter.setPen(QColor(255, 255, 255)); //invert text color if selected
-				bim.fill(QColor::fromHsv(360 * (gen() / gm), 50 * (gen() / gm), 50 + 50 * (gen() / gm))); //random dark color if selected 
+			bool isdir = std::filesystem::directory_entry(filesdisp[ci]).is_directory();
+			bool isfile = std::filesystem::directory_entry(filesdisp[ci]).is_regular_file();
+			
+			if (isfile) {
+				if (ci != sel) {
+					painter.setPen(QColor(0, 0, 0));
+					bim.fill(QColor::fromHsv(360 * (gen() / gm), 50 * (gen() / gm), 205 + 50 * (gen() / gm))); //random light color if file not selected
+				}
+				else {
+					painter.setPen(QColor(255, 255, 255)); //invert text color if selected
+					bim.fill(QColor::fromHsv(360 * (gen() / gm), 50 * (gen() / gm), 50 + 50 * (gen() / gm))); //random dark color if file selected 
+				}
+			} 
+			else if (isdir) {
+				if (ci != sel) {
+					painter.setPen(QColor(0, 100, 128));
+					bim.fill(QColor::fromHsv(0,0,216)); //light gray + cyan font if directory not selected
+				}
+				else if (ci == 0 && curd != proot) {
+					painter.setPen(QColor(0, 100, 128));
+					bim.fill(QColor::fromHsv(0, 0, 100)); //darker gray + cyan font if directory not selected and is parent directory tab
+				}
+				else {
+					painter.setPen(QColor(128, 255, 255));
+					bim.fill(QColor::fromHsv(0,0,32)); //dark gray + lighter cyan-ish font if directory selected 
+				}
 			}
 
 			painter.drawImage(QPointF(0,i2), bim.scaled(QSize(e->rect().width(), ll*0.9)));
-			painter.drawText(QRect(0, i2 , e->rect().width(), ll), files[ci].filename().generic_string().c_str(), to);
+			
+			if (ci == 0 && isdir && curd != proot) {
+					painter.drawText(QRect(0, i2, e->rect().width(), ll), "Parent directory", to);
+			}
+			else if(isdir) {
+				std::string curdch = curd.generic_string();
+				std::string prootch = proot.generic_string();
+				std::filesystem::path  relpath("root" + std::string(curdch.begin() + prootch.size(), curdch.end()));
+				painter.drawText(QRect(0, i2, e->rect().width(), ll), (relpath / filesdisp[ci].filename()).generic_string().c_str(), to);
+			}
+			else if(isfile) painter.drawText(QRect(0, i2, e->rect().width(), ll), filesdisp[ci].filename().generic_string().c_str(), to);
 			co = ci;
 		}
 
@@ -618,17 +749,27 @@ void Fscr::paintEvent(QPaintEvent* e)
 void Fscr::mousePressEvent(QMouseEvent* e)
 {
 	double ll = 0.2 * log(std::min(width(), height())) / log(1.04);
-	int l = ll * gfiles().size();
+	int l = ll * gfilesd().size();
 	int cy = floor(fmod(curvl + e->pos().y() + l, l) / ll);
 
-	if (l>0 && cy<=gfiles().size() && e->button() == Qt::MouseButton::LeftButton) {
+	if (l>0 && cy<=gfilesd().size() && e->button() == Qt::MouseButton::LeftButton) {
 		
 		//left button sets the current file and the selected widget, and stops the player
 		if (CMAKE_INTDIR == "Debug")
-			qDebug() << files[cy].generic_string().c_str();
-		static_cast<Inter*>(parent())->crf = files[cy].generic_string().c_str();
-		static_cast<Inter*>(parent())->pl->stop();
-		sel = cy;
+			qDebug() << filesdisp[cy].c_str();
+		if (std::filesystem::directory_entry(filesdisp[cy]).is_regular_file()) {
+			static_cast<Inter*>(parent())->crf = filesdisp[cy].c_str();
+			static_cast<Inter*>(parent())->pl->stop();
+			sel = cy;
+		}
+		
+		else if (std::filesystem::directory_entry(filesdisp[cy]).is_directory()) {
+			static_cast<Inter*>(parent())->cdr = filesdisp[cy].generic_string();
+			curd = filesdisp[cy];
+			static_cast<Inter*>(parent())->fdret();
+			sel = -1;
+		}
+
 		viewport()->update();
 	}
 	
@@ -649,7 +790,10 @@ void Fscr::mousePressEvent(QMouseEvent* e)
 
 void Fscr::mouseMoveEvent(QMouseEvent* e)
 {
-	static_cast<Inter*>(parent())->hintm("Set the current file");
+	bool dirempty = gfiles().size()>0 && gfilesd().size()>0;
+	static_cast<Inter*>(parent())->hintm(dirempty? "Set the current file" : "Set the current file \nNo file or directory was found for the current directory!");
+
+	if(QRect(0,0.9*size().height(),size().width(),0.1*size().height()).contains(e->pos())) static_cast<Inter*>(parent())->hintm("Type to search files"); //search bar hint
 
 	if (mbs) {
 		mousey = e->pos().y();

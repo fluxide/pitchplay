@@ -110,12 +110,12 @@ void APlay::play(std::filesystem::path f)
 		
 			SF_INFO inf{};
 			SNDFILE* wf = sf_open(f.generic_string().c_str(), SFM_READ, &inf);
-			int di[4096];
+			float di[4096];
 			chn = inf.channels;
 
 			while (1) {
 
-				long r = sf_read_int(wf, di, 4096);
+				long r = sf_read_float(wf, di, 4096);
 
 				if (r <= 0) break;
 				data.insert(data.end(), (char*)di, (char*)di + 4*r);
@@ -209,7 +209,7 @@ void playcb(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 fra
 			if (ts == 2) 
 				sum += ((int16_t*)buf)[idx] * s;
 			else if (ts == 4)
-				sum += ((int*)buf)[idx] * s;
+				sum += ((float*)buf)[idx] * s;
 			norm += s;
 		}
 
@@ -221,8 +221,9 @@ void playcb(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 fra
 		double ci = ii + p->read; //current read index
 		double fivol = volume * std::clamp((ci / pitch) / (44100 * fade_in + 0.1),0.0,1.0); //volume, with fade in handled
 		//processed data is cast to float, and interleaved. panning is done linearly
-		sampout[i] = static_cast<float>(((1 - panning) * fivol * fr(sampl, ci, p->tot/p->ts/2, p->ts))/pow(2,8*p->ts-1));
-		sampout[i+1] = static_cast<float>((panning*fivol* fr(sampr, ci, p->tot/ p->ts / 2, p->ts)) / pow(2, 8 * p->ts-1));
+		int quiet = p->ts == 2 ? pow(2, 8 * p->ts - 1) : 1;
+		sampout[i] = static_cast<float>(((1 - panning) * fivol * fr(sampl, ci, p->tot/p->ts/2, p->ts))/quiet);
+		sampout[i+1] = static_cast<float>((panning*fivol* fr(sampr, ci, p->tot/ p->ts / 2, p->ts)) /quiet);
 		ii+= pitch; //advance the reader by pitch
 	}
 

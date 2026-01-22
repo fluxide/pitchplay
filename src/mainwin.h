@@ -115,14 +115,18 @@ public:
 	Fscr(const Fscr& f) = default;
 
 	QVector<std::filesystem::path>& gfiles(); //get files
+	std::vector<std::filesystem::path>& gfilesd(); //get filesdisp
 	int sel = -1; //currently selected file's index
 	Slider* sl; //a slider used as a vertical scroll bar for the viewport
+	std::filesystem::path proot; //project root dir
+	std::filesystem::path curd; //current dir
 
 public slots:
 
 	void mmbrec(); //mouse middle button receive
 	void sbrec(); //scroll bar receive
 	void winit2(double vt);
+	void searchUpdate(const QString& text);
 
 
 protected:
@@ -139,15 +143,18 @@ protected:
 private:
 
 	QVector<std::filesystem::path> files; //file array
+	std::vector<std::filesystem::path> filesdisp; //file array (the ones that are actually displayed)
 	int curvl = 0; //current value
 	int mousey = 0;
 	QPointF lp; //last (mouse) position
 	bool mbs = false; //middle button scroll (is scrolling?)
 	bool mbst = false; //middle button scroll timer (is started?)
 	bool mbst2 = false; //scroll bar scroll timer (is started?)
-	double subcurvl = 0; //prevents a dangling pointer in scroll bar processing
+	double subcurvl = 0; //prevents a dangling value in scroll bar processing
 
 	double tone = 0;
+
+	QLineEdit* search; //search or filter bar for quick searching
 
 	std::thread wt;
 };
@@ -174,6 +181,7 @@ public:
 	APlay* pl; //audio player
 	QLabel* hp = nullptr; //hint panel
 
+	Fscr* fscr;
 
 public slots:
 
@@ -187,8 +195,6 @@ protected:
 private:
 
 	QVector<Button*> buttons;
-
-	Fscr* fscr; 
 };
 
 
